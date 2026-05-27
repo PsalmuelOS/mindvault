@@ -52,6 +52,7 @@ export const resources = pgTable("resources", {
     .default("pending"),
   verificationId: text("verification_id"),
   listed: boolean("listed").notNull().default(false),
+  onchainStatus: text("onchain_status"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

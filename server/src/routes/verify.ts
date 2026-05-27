@@ -69,6 +69,7 @@ router.post("/verify-content", verifyPaywall, async (req, res) => {
         verificationStatus: result.isOriginal ? "verified" : "rejected",
         verificationId: verification.id,
         listed: result.isOriginal,
+        ...(result.isOriginal && { onchainStatus: "pending" }),
       })
       .where(eq(resources.id, resourceId));
   }
