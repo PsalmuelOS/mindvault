@@ -23,6 +23,7 @@ reads the canonical resource entry here.
 | `transfer_ownership(id, new_creator)` | creator | Hand the resource to a new owner. |
 | `set_listed(id, listed)` | creator | Set the listing state of a resource (true = listed, false = delisted). |
 | `delist(id)` | creator | Convenience method to delist a resource (equivalent to `set_listed(id, false)`). |
+| `list(start, limit) -> Vec<Resource>` | — | Paginated slice in insertion order. `start` is the 0-based index; `limit` capped at 20. |
 | `get(id) -> Resource` | — | Read a resource. Errors `NotFound` if absent. |
 | `exists(id) -> bool` | — | Whether a resource is registered. |
 | `count() -> u32` | — | Total resources ever registered. |

@@ -150,7 +150,96 @@ fn set_listed_requires_creator_auth() {
 fn set_listed_on_missing_resource_fails() {
     let (env, _creator, client) = setup();
     let id = String::from_str(&env, "missing");
-    
+
     let res = client.try_set_listed(&id, &false);
     assert_eq!(res, Err(Ok(Error::NotFound)));
+}
+
+#[test]
+fn list_empty_returns_empty() {
+    let (_env, _creator, client) = setup();
+    let page = client.list(&0u32, &20u32);
+    assert_eq!(page.len(), 0);
+}
+
+#[test]
+fn list_returns_all_in_insertion_order() {
+    let (env, creator, client) = setup();
+    let ids = ["a", "b", "c"];
+    for id in &ids {
+        client.register(
+            &creator,
+            &String::from_str(&env, id),
+            &100i128,
+            &String::from_str(&env, "m"),
+        );
+    }
+
+    let page = client.list(&0u32, &20u32);
+    assert_eq!(page.len(), 3);
+    assert_eq!(page.get(0).unwrap().id, String::from_str(&env, "a"));
+    assert_eq!(page.get(1).unwrap().id, String::from_str(&env, "b"));
+    assert_eq!(page.get(2).unwrap().id, String::from_str(&env, "c"));
+}
+
+fn register_n(env: &Env, creator: &Address, client: &VaultRegistryClient<'_>, ids: &[&str]) {
+    for id in ids {
+        client.register(
+            creator,
+            &String::from_str(env, id),
+            &100i128,
+            &String::from_str(env, "m"),
+        );
+    }
+}
+
+#[test]
+fn list_pagination_first_page() {
+    let (env, creator, client) = setup();
+    register_n(&env, &creator, &client, &["r0", "r1", "r2", "r3", "r4"]);
+
+    let page = client.list(&0u32, &3u32);
+    assert_eq!(page.len(), 3);
+    assert_eq!(page.get(0).unwrap().id, String::from_str(&env, "r0"));
+    assert_eq!(page.get(2).unwrap().id, String::from_str(&env, "r2"));
+}
+
+#[test]
+fn list_pagination_second_page() {
+    let (env, creator, client) = setup();
+    register_n(&env, &creator, &client, &["r0", "r1", "r2", "r3", "r4"]);
+
+    let page = client.list(&3u32, &3u32);
+    assert_eq!(page.len(), 2); // only r3, r4 remain
+    assert_eq!(page.get(0).unwrap().id, String::from_str(&env, "r3"));
+    assert_eq!(page.get(1).unwrap().id, String::from_str(&env, "r4"));
+}
+
+#[test]
+fn list_start_beyond_count_returns_empty() {
+    let (env, creator, client) = setup();
+    client.register(
+        &creator,
+        &String::from_str(&env, "x"),
+        &100i128,
+        &String::from_str(&env, "m"),
+    );
+
+    let page = client.list(&99u32, &10u32);
+    assert_eq!(page.len(), 0);
+}
+
+#[test]
+fn list_limit_capped_at_20() {
+    let (env, creator, client) = setup();
+    let ids = [
+        "i00","i01","i02","i03","i04","i05","i06","i07","i08","i09",
+        "i10","i11","i12","i13","i14","i15","i16","i17","i18","i19",
+        "i20","i21","i22","i23","i24",
+    ];
+    register_n(&env, &creator, &client, &ids);
+
+    // Requesting 25 items should be silently capped to 20.
+    let page = client.list(&0u32, &25u32);
+    assert_eq!(page.len(), 20);
 }

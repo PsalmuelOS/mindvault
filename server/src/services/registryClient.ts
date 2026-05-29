@@ -1,5 +1,5 @@
 import { Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
-import { Client, Errors, type Resource } from "@mindvault/registry-client";
+import { Client, Errors, listResources, type Resource } from "@mindvault/registry-client";
 import { config } from "../config.js";
 
 const NETWORK_PASSPHRASE =
@@ -40,6 +40,10 @@ export async function getResource(id: string): Promise<Resource | null> {
 export async function resourceExists(id: string): Promise<boolean> {
   const tx = await registryClient.exists({ id });
   return tx.result;
+}
+
+export async function getResourcePage(start: number, limit: number): Promise<Resource[]> {
+  return listResources(registryClient, start, limit);
 }
 
 /**

@@ -11,7 +11,7 @@
 //! `require_auth`). Ownership can be transferred.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
 // ~5s ledgers → 17,280 per day. Persistent entries are bumped ~30 days on each
@@ -34,6 +34,7 @@ pub struct Resource {
 pub enum DataKey {
     Resource(String),
     Count,
+    Index(u32),
 }
 
 #[contracterror]
@@ -81,6 +82,11 @@ impl VaultRegistry {
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
 
         let count: u32 = env.storage().instance().get(&DataKey::Count).unwrap_or(0);
+        let idx_key = DataKey::Index(count);
+        env.storage().persistent().set(&idx_key, &id);
+        env.storage()
+            .persistent()
+            .extend_ttl(&idx_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.storage().instance().set(&DataKey::Count, &(count + 1));
         env.storage()
             .instance()
@@ -139,6 +145,31 @@ impl VaultRegistry {
     /// Delist a resource (convenience method for set_listed(false)). Only the creator may call this.
     pub fn delist(env: Env, id: String) -> Result<(), Error> {
         Self::set_listed(env, id, false)
+    }
+
+    /// Paginated resource list in insertion order. `limit` is capped at 20.
+    pub fn list(env: Env, start: u32, limit: u32) -> Vec<Resource> {
+        let total: u32 = env.storage().instance().get(&DataKey::Count).unwrap_or(0);
+        let page_size = limit.min(20);
+        let mut result: Vec<Resource> = Vec::new(&env);
+        let mut i = start;
+        while i < total && result.len() < page_size {
+            if let Some(id) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, String>(&DataKey::Index(i))
+            {
+                if let Some(resource) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, Resource>(&DataKey::Resource(id))
+                {
+                    result.push_back(resource);
+                }
+            }
+            i += 1;
+        }
+        result
     }
 
     /// Fetch a resource. Errors with `NotFound` if it does not exist.

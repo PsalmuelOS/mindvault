@@ -42,11 +42,12 @@ export const networks = {
 export interface Resource {
   creator: string;
   id: string;
+  listed: boolean;
   metadata: string;
   price: i128;
 }
 
-export type DataKey = {tag: "Resource", values: readonly [string]} | {tag: "Count", values: void};
+export type DataKey = {tag: "Resource", values: readonly [string]} | {tag: "Count", values: void} | {tag: "Index", values: readonly [u32]};
 
 export const Errors = {
   1: {message:"AlreadyRegistered"},
@@ -79,6 +80,12 @@ export interface Client {
    * Hand ownership to a new creator. Only the current creator may call this.
    */
   transfer_ownership: ({id, new_creator}: {id: string, new_creator: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+
+  /**
+   * Construct and simulate a list transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation.
+   * Paginated resource list in insertion order. `limit` is capped at 20.
+   */
+  list: ({start, limit}: {start: u32, limit: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Array<Resource>>>
 
   /**
    * Construct and simulate a get transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -134,6 +141,7 @@ export class Client extends ContractClient {
         set_price: this.txFromJSON<Result<void>>,
         update_metadata: this.txFromJSON<Result<void>>,
         transfer_ownership: this.txFromJSON<Result<void>>,
+        list: this.txFromJSON<Array<Resource>>,
         get: this.txFromJSON<Result<Resource>>,
         exists: this.txFromJSON<boolean>,
         count: this.txFromJSON<u32>
