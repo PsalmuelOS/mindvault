@@ -4,7 +4,9 @@
  * Exposes vault tools to AI agents via the Model Context Protocol.
  */
 
+import { networks as registryNetworks, type Resource } from "@mindvault/registry-client";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
@@ -17,6 +19,9 @@ import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const BASE_URL = process.env.MINDVAULT_URL ?? "https://mindvault-hyr3.onrender.com";
+const REGISTRY_CONTRACT_ID =
+  process.env.VAULT_REGISTRY_CONTRACT_ID ?? registryNetworks.testnet.contractId;
+const REGISTRY_NETWORK_PASSPHRASE = registryNetworks.testnet.networkPassphrase;
 const SPONSORED_ACCOUNT_URL =
   process.env.SPONSORED_ACCOUNT_URL ??
   "https://stellar-sponsored-agent-account.onrender.com";
@@ -214,6 +219,16 @@ async function agentStatus(): Promise<string> {
   return JSON.stringify(res.data, null, 2);
 }
 
+function registryInfo(): string {
+  const info: { contractId: string; networkPassphrase: string; rpcUrl: string; resourceFields: (keyof Resource)[] } = {
+    contractId: REGISTRY_CONTRACT_ID,
+    networkPassphrase: REGISTRY_NETWORK_PASSPHRASE,
+    rpcUrl: "https://soroban-testnet.stellar.org",
+    resourceFields: ["id", "creator", "price", "metadata", "listed"],
+  };
+  return JSON.stringify(info, null, 2);
+}
+
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new Server(
@@ -231,6 +246,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     { name: "mindvault_publish", description: "Publish a link resource. Agent wallet signs the x402 verification payment on-chain.", inputSchema: { type: "object", properties: { title: { type: "string" }, description: { type: "string" }, price: { type: "string" }, externalUrl: { type: "string" } }, required: ["title", "price", "externalUrl"] } },
     { name: "mindvault_buy", description: "Pay USDC via x402 and access a resource.", inputSchema: { type: "object", properties: { resourceId: { type: "string" } }, required: ["resourceId"] } },
     { name: "mindvault_agent_status", description: "Check the verification agent's earnings and activity.", inputSchema: { type: "object", properties: {}, required: [] } },
+    { name: "mindvault_registry_info", description: "Return the on-chain vault-registry contract ID and network so you can query ownership, price, and listing state directly from Stellar without trusting the MindVault API.", inputSchema: { type: "object", properties: {}, required: [] } },
   ],
 }));
 
@@ -247,6 +263,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "mindvault_publish":      result = await publish({ title: args.title as string, description: args.description as string | undefined, price: args.price as string, externalUrl: args.externalUrl as string }); break;
       case "mindvault_buy":          result = await buy(args.resourceId as string); break;
       case "mindvault_agent_status": result = await agentStatus(); break;
+      case "mindvault_registry_info": result = registryInfo(); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
     return { content: [{ type: "text", text: result }] };

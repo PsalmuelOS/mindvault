@@ -119,6 +119,10 @@ cd ../web
 pnpm dev          # Frontend on :5173
 ```
 
+## Architecture
+
+- **[docs/architecture.md](docs/architecture.md)** — how x402 + USDC handles payment and how the vault-registry contract is the on-chain source of truth for ownership, price, and content integrity. Includes a full system diagram.
+
 ## Operations
 
 - **Reconciliation**: see [docs/reconciliation.md](docs/reconciliation.md) — detects and reports drift between the DB and the on-chain vault registry; run with `pnpm reconcile` from `server/`.

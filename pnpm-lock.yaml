@@ -10,6 +10,9 @@ importers:
 
   mcp:
     dependencies:
+      '@mindvault/registry-client':
+        specifier: workspace:*
+        version: link:../packages/registry-client
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.29.0(zod@4.4.3)
@@ -127,6 +130,9 @@ importers:
 
   web:
     dependencies:
+      '@mindvault/registry-client':
+        specifier: workspace:*
+        version: link:../packages/registry-client
       '@stellar/freighter-api':
         specifier: ^6.0.1
         version: 6.0.1

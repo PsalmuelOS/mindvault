@@ -1,3 +1,8 @@
+import { type Resource, networks } from "@mindvault/registry-client";
+
+export type { Resource };
+export { networks as registryNetworks };
+
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 export async function fetchMyResources(apiKey: string): Promise<any[]> {
