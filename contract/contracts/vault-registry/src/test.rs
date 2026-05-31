@@ -32,6 +32,31 @@ fn register_then_read() {
 }
 
 #[test]
+fn count_tracks_multiple_successful_registrations() {
+    let (env, creator, client) = setup();
+    assert_eq!(client.count(), 0);
+
+    let ids = ["c1", "c2", "c3", "c4"];
+    for id in &ids {
+        client.register(
+            &creator,
+            &String::from_str(&env, id),
+            &100i128,
+            &String::from_str(&env, "m"),
+        );
+    }
+    assert_eq!(client.count(), 4);
+
+    // Failed duplicate must not increment count.
+    let dup = String::from_str(&env, "c2");
+    assert_eq!(
+        client.try_register(&creator, &dup, &100i128, &String::from_str(&env, "m")),
+        Err(Ok(Error::AlreadyRegistered))
+    );
+    assert_eq!(client.count(), 4);
+}
+
+#[test]
 fn duplicate_registration_fails() {
     let (env, creator, client) = setup();
     let id = String::from_str(&env, "dup");
@@ -289,9 +314,8 @@ fn list_start_beyond_count_returns_empty() {
 fn list_limit_capped_at_20() {
     let (env, creator, client) = setup();
     let ids = [
-        "i00","i01","i02","i03","i04","i05","i06","i07","i08","i09",
-        "i10","i11","i12","i13","i14","i15","i16","i17","i18","i19",
-        "i20","i21","i22","i23","i24",
+        "i00", "i01", "i02", "i03", "i04", "i05", "i06", "i07", "i08", "i09", "i10", "i11", "i12",
+        "i13", "i14", "i15", "i16", "i17", "i18", "i19", "i20", "i21", "i22", "i23", "i24",
     ];
     register_n(&env, &creator, &client, &ids);
 

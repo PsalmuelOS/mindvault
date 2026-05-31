@@ -92,7 +92,8 @@ impl VaultRegistry {
             .instance()
             .extend_ttl(LIFETIME_THRESHOLD, BUMP_AMOUNT);
 
-        env.events().publish((symbol_short!("register"), creator), id);
+        env.events()
+            .publish((symbol_short!("register"), creator), id);
         Ok(())
     }
 
@@ -182,7 +183,7 @@ impl VaultRegistry {
         env.storage().persistent().has(&DataKey::Resource(id))
     }
 
-    /// Total number of resources ever registered.
+    /// Total number of resources successfully registered (monotonic; not decremented on transfer).
     pub fn count(env: Env) -> u32 {
         env.storage().instance().get(&DataKey::Count).unwrap_or(0)
     }

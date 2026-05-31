@@ -26,7 +26,7 @@ reads the canonical resource entry here.
 | `list(start, limit) -> Vec<Resource>` | — | Paginated slice in insertion order. `start` is the 0-based index; `limit` capped at 20. |
 | `get(id) -> Resource` | — | Read a resource. Errors `NotFound` if absent. |
 | `exists(id) -> bool` | — | Whether a resource is registered. |
-| `count() -> u32` | — | Total resources ever registered. |
+| `count() -> u32` | — | Total resources successfully registered (view; used for registry stats). |
 
 `price` is an `i128` in USDC stroops (7 decimals — `1_000_000` = 0.10 USDC).
 `id` is the resource's cuid2 string, matching the server's resource IDs.
