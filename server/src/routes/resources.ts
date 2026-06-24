@@ -10,6 +10,7 @@ import {
   setPriceSchema,
   prepareOwnershipSchema,
   transferOwnershipSchema,
+  catalogQuerySchema,
 } from "../schemas/requests.js";
 import { dynamicPaywall } from "../middleware/dynamicPaywall.js";
 import {

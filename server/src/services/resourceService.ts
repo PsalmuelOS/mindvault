@@ -97,7 +97,21 @@ export async function getResourceById(id: string) {
     .then((rows) => rows[0] ?? null);
 }
 
-async function queryCatalog() {
+export type CatalogListFilters = {
+  verificationStatus?: "verified" | "pending" | "rejected";
+};
+
+function catalogCacheKey(filters?: CatalogListFilters): string {
+  if (!filters?.verificationStatus) return CATALOG_KEY;
+  return `${CATALOG_KEY}:verificationStatus=${filters.verificationStatus}`;
+}
+
+async function queryCatalog(filters?: CatalogListFilters) {
+  const conditions = [eq(resources.listed, true)];
+  if (filters?.verificationStatus) {
+    conditions.push(eq(resources.verificationStatus, filters.verificationStatus));
+  }
+
   return db
     .select({
       id: resources.id,
@@ -106,12 +120,13 @@ async function queryCatalog() {
       price: resources.price,
       resourceType: resources.resourceType,
       mimeType: resources.mimeType,
+      verificationStatus: resources.verificationStatus,
       publisherName: publishers.name,
       createdAt: resources.createdAt,
     })
     .from(resources)
     .innerJoin(publishers, eq(resources.publisherId, publishers.id))
-    .where(eq(resources.listed, true));
+    .where(and(...conditions));
 }
 
 export async function listCatalog(
