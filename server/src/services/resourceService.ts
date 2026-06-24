@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { resources, publishers, verifications } from "../db/schema.js";
 import { uploadFile, deleteFile } from "../storage/supabaseStorage.js";
@@ -20,6 +20,46 @@ export type CatalogFilters = {
 const CATALOG_KEY = "catalog";
 const metaKey = (id: string) => `meta:${id}`;
 const readCache = createTtlCache<unknown>({ defaultTtlMs: config.CATALOG_CACHE_TTL_MS });
+
+export interface CatalogFilters {
+  search?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  verificationStatus?: "pending" | "verified" | "rejected" | "skipped";
+  resourceType?: "file" | "link";
+}
+
+function buildCatalogWhereClause(filters?: CatalogFilters) {
+  const clauses: any[] = [eq(resources.listed, true)];
+
+  const search = filters?.search?.trim();
+  if (search) {
+    const pattern = `%${search}%`;
+    clauses.push(
+      sql<boolean>`(${resources.title} ILIKE ${pattern} OR COALESCE(${resources.description}, '') ILIKE ${pattern})`,
+    );
+  }
+
+  if (filters?.minPrice?.trim()) {
+    const minPrice = filters.minPrice.trim();
+    clauses.push(sql<boolean>`CAST(${resources.price} AS numeric) >= ${minPrice}`);
+  }
+
+  if (filters?.maxPrice?.trim()) {
+    const maxPrice = filters.maxPrice.trim();
+    clauses.push(sql<boolean>`CAST(${resources.price} AS numeric) <= ${maxPrice}`);
+  }
+
+  if (filters?.verificationStatus) {
+    clauses.push(eq(resources.verificationStatus, filters.verificationStatus));
+  }
+
+  if (filters?.resourceType) {
+    clauses.push(eq(resources.resourceType, filters.resourceType));
+  }
+
+  return and(...clauses);
+}
 
 // Drop cached reads affected by a write. The catalog (the listed set) is always
 // invalidated; the specific resource's preview is dropped too when known.
@@ -105,7 +145,21 @@ export async function getResourceById(id: string) {
     .then((rows) => rows[0] ?? null);
 }
 
-async function queryCatalog() {
+export type CatalogListFilters = {
+  verificationStatus?: "verified" | "pending" | "rejected";
+};
+
+function catalogCacheKey(filters?: CatalogListFilters): string {
+  if (!filters?.verificationStatus) return CATALOG_KEY;
+  return `${CATALOG_KEY}:verificationStatus=${filters.verificationStatus}`;
+}
+
+async function queryCatalog(filters?: CatalogListFilters) {
+  const conditions = [eq(resources.listed, true)];
+  if (filters?.verificationStatus) {
+    conditions.push(eq(resources.verificationStatus, filters.verificationStatus));
+  }
+
   return db
     .select({
       id: resources.id,
@@ -114,62 +168,36 @@ async function queryCatalog() {
       price: resources.price,
       resourceType: resources.resourceType,
       mimeType: resources.mimeType,
+      verificationStatus: resources.verificationStatus,
       publisherName: publishers.name,
       createdAt: resources.createdAt,
     })
     .from(resources)
     .innerJoin(publishers, eq(resources.publisherId, publishers.id))
-    .where(eq(resources.listed, true));
-}
-
-function matchesSearch(row: Awaited<ReturnType<typeof queryCatalog>>[number], search: string) {
-  const needle = search.trim().toLowerCase();
-  if (!needle) return true;
-
-  return [row.title, row.description, row.publisherName].some((value) =>
-    value?.toLowerCase().includes(needle),
-  );
-}
-
-function matchesPriceRange(
-  row: Awaited<ReturnType<typeof queryCatalog>>[number],
-  filters: CatalogFilters,
-) {
-  const price = Number(row.price);
-  if (Number.isNaN(price)) return false;
-
-  if (filters.minPrice !== undefined && price < Number(filters.minPrice)) return false;
-  if (filters.maxPrice !== undefined && price > Number(filters.maxPrice)) return false;
-  return true;
-}
-
-function matchesCatalogFilters(
-  row: Awaited<ReturnType<typeof queryCatalog>>[number],
-  filters?: CatalogFilters,
-) {
-  if (!filters) return true;
-  if (filters.search && !matchesSearch(row, filters.search)) return false;
-  if (filters.verificationStatus && row.verificationStatus !== filters.verificationStatus)
-    return false;
-  if (filters.resourceType && row.resourceType !== filters.resourceType) return false;
-  if (!matchesPriceRange(row, filters)) return false;
-  return true;
+    .where(and(...conditions));
 }
 
 export async function listCatalog(
-  filters?: CatalogFilters,
+  searchTerm?: string,
 ): Promise<Awaited<ReturnType<typeof queryCatalog>>> {
-  const cached = readCache.get(CATALOG_KEY);
-  const rows =
-    cached !== undefined ? (cached as Awaited<ReturnType<typeof queryCatalog>>) : await queryCatalog();
+  let rows: Awaited<ReturnType<typeof queryCatalog>>;
 
-  if (cached === undefined) {
+  const cached = readCache.get(CATALOG_KEY);
+  if (cached !== undefined) {
+    rows = cached as Awaited<ReturnType<typeof queryCatalog>>;
+  } else {
+    rows = await queryCatalog();
     readCache.set(CATALOG_KEY, rows);
   }
 
-  if (!filters) return rows;
+  if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    return rows.filter(
+      (r) => r.title?.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q),
+    );
+  }
 
-  return rows.filter((row) => matchesCatalogFilters(row, filters));
+  return rows;
 }
 
 async function queryResourceMeta(id: string) {
