@@ -4,9 +4,15 @@
  * Exposes vault tools to AI agents via the Model Context Protocol.
  */
 
-import { networks as registryNetworks, type Resource } from "@mindvault/registry-client";
+import {
+  networks as registryNetworks,
+  normalizeX402Network,
+  resolveStellarNetwork,
+  validateNetworkConfig,
+  X402_NETWORK_IDS,
+  type Resource,
+} from "@mindvault/registry-client";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createEd25519Signer } from "@x402/stellar";
@@ -15,15 +21,44 @@ import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+const STELLAR_NETWORK = resolveStellarNetwork(process.env.STELLAR_NETWORK);
+const networkPreset = registryNetworks[STELLAR_NETWORK];
+
+const networkIssues = validateNetworkConfig({
+  stellarNetwork: STELLAR_NETWORK,
+  x402Network: process.env.NETWORK ?? networkPreset.x402Network,
+  sorobanRpcUrl: process.env.SOROBAN_RPC_URL ?? networkPreset.sorobanRpcUrl,
+  horizonUrl: process.env.HORIZON_URL ?? networkPreset.horizonUrl,
+  usdcSacContractId: process.env.USDC_CONTRACT_ID ?? networkPreset.usdcSacContractId,
+  registryContractId:
+    process.env.VAULT_REGISTRY_CONTRACT_ID ?? networkPreset.defaultRegistryContractId ?? undefined,
+});
+
+if (networkIssues.length > 0) {
+  const details = networkIssues.map((i) => `${i.field}: ${i.message}`).join("\n");
+  console.error(`MindVault MCP: inconsistent network configuration:\n${details}`);
+  process.exit(1);
+}
+
 const BASE_URL = process.env.MINDVAULT_URL ?? "https://mindvault-hyr3.onrender.com";
 const REGISTRY_CONTRACT_ID =
-  process.env.VAULT_REGISTRY_CONTRACT_ID ?? registryNetworks.testnet.contractId;
-const REGISTRY_NETWORK_PASSPHRASE = registryNetworks.testnet.networkPassphrase;
+  process.env.VAULT_REGISTRY_CONTRACT_ID ?? networkPreset.defaultRegistryContractId ?? "";
+const REGISTRY_NETWORK_PASSPHRASE = networkPreset.networkPassphrase;
 const SPONSORED_ACCOUNT_URL =
   process.env.SPONSORED_ACCOUNT_URL ?? "https://stellar-sponsored-agent-account.onrender.com";
-const HORIZON_URL = process.env.HORIZON_URL ?? "https://horizon-testnet.stellar.org";
-const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
-const NETWORK = "stellar:testnet";
+const HORIZON_URL = process.env.HORIZON_URL ?? networkPreset.horizonUrl;
+const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL ?? networkPreset.sorobanRpcUrl;
+type X402Network = (typeof X402_NETWORK_IDS)[keyof typeof X402_NETWORK_IDS];
+const NETWORK: X402Network = normalizeX402Network(
+  process.env.NETWORK ?? networkPreset.x402Network,
+) as X402Network;
+
+if (!REGISTRY_CONTRACT_ID) {
+  console.error(
+    "MindVault MCP: VAULT_REGISTRY_CONTRACT_ID is required for mainnet. Deploy vault-registry and set the contract ID.",
+  );
+  process.exit(1);
+}
 
 // ── In-memory agent state ─────────────────────────────────────────────────────
 
@@ -193,7 +228,7 @@ async function walletInfo(): Promise<string> {
   return `Address: ${wallet.publicKey}\nUSDC Balance: ${balance}`;
 }
 
-async function browse(): Promise<string> {
+export async function browse(): Promise<string> {
   const res = await jsonFetch(`${BASE_URL}/resources`);
   if (!res.ok) throw new Error(`Browse failed: ${JSON.stringify(res.data)}`);
   const items: any[] = res.data;
@@ -201,25 +236,17 @@ async function browse(): Promise<string> {
   return items.map(formatResource).join("\n\n");
 }
 
-async function search(args: SearchFilters): Promise<string> {
-  const filters = normalizeSearchFilters(args);
-  if (!filters) return "Provide a non-empty search query.";
-
-  const params = new URLSearchParams();
-  params.set("search", filters.query);
-  if (filters.minPrice) params.set("minPrice", filters.minPrice);
-  if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
-  if (filters.verificationStatus) params.set("verificationStatus", filters.verificationStatus);
-  if (filters.resourceType) params.set("resourceType", filters.resourceType);
-
-  const res = await jsonFetch(`${BASE_URL}/resources?${params.toString()}`);
+export async function search(query: string): Promise<string> {
+  const q = (query ?? "").trim().toLowerCase();
+  if (!q) return "Provide a non-empty search query.";
+  const res = await jsonFetch(`${BASE_URL}/resources`);
   if (!res.ok) throw new Error(`Search failed: ${JSON.stringify(res.data)}`);
   const items: any[] = res.data;
   if (items.length === 0) return `No resources match ${describeFilters(filters)}.`;
   return items.map(formatResource).join("\n\n");
 }
 
-async function preview(resourceId: string): Promise<string> {
+export async function preview(resourceId: string): Promise<string> {
   const res = await jsonFetch(`${BASE_URL}/resources/${resourceId}/meta`);
   if (!res.ok) throw new Error(`Preview failed: ${JSON.stringify(res.data)}`);
   const r = res.data;
