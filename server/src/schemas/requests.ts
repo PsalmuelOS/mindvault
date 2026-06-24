@@ -66,7 +66,28 @@ export const transferOwnershipSchema = z
   })
   .strict();
 
-/** Query params for GET /resources (public catalog). */
-export const catalogQuerySchema = z.object({
-  verificationStatus: z.enum(["verified", "pending", "rejected"]).optional(),
-});
+/**
+ * Query params for GET /resources (public catalog).
+ *
+ * Prices are kept as decimal strings to match the stored format; the regex
+ * accepts only non-negative decimals (rejecting negatives, NaN, Infinity, and
+ * non-numeric input). `.strict()` rejects unknown params.
+ */
+const decimalPrice = z.string().regex(/^\d+(\.\d+)?$/, "must be a non-negative decimal value");
+
+export const catalogQuerySchema = z
+  .object({
+    search: z.string().optional(),
+    minPrice: decimalPrice.optional(),
+    maxPrice: decimalPrice.optional(),
+    verificationStatus: z.enum(["verified", "pending", "rejected"]).optional(),
+    resourceType: z.enum(["file", "link"]).optional(),
+  })
+  .strict()
+  .refine(
+    (q) =>
+      q.minPrice === undefined ||
+      q.maxPrice === undefined ||
+      parseFloat(q.minPrice) <= parseFloat(q.maxPrice),
+    { message: "minPrice cannot be greater than maxPrice", path: ["minPrice"] },
+  );
