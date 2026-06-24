@@ -97,7 +97,21 @@ export async function getResourceById(id: string) {
     .then((rows) => rows[0] ?? null);
 }
 
-async function queryCatalog() {
+export type CatalogListFilters = {
+  verificationStatus?: "verified" | "pending" | "rejected";
+};
+
+function catalogCacheKey(filters?: CatalogListFilters): string {
+  if (!filters?.verificationStatus) return CATALOG_KEY;
+  return `${CATALOG_KEY}:verificationStatus=${filters.verificationStatus}`;
+}
+
+async function queryCatalog(filters?: CatalogListFilters) {
+  const conditions = [eq(resources.listed, true)];
+  if (filters?.verificationStatus) {
+    conditions.push(eq(resources.verificationStatus, filters.verificationStatus));
+  }
+
   return db
     .select({
       id: resources.id,
@@ -106,20 +120,35 @@ async function queryCatalog() {
       price: resources.price,
       resourceType: resources.resourceType,
       mimeType: resources.mimeType,
+      verificationStatus: resources.verificationStatus,
       publisherName: publishers.name,
       createdAt: resources.createdAt,
     })
     .from(resources)
     .innerJoin(publishers, eq(resources.publisherId, publishers.id))
-    .where(eq(resources.listed, true));
+    .where(and(...conditions));
 }
 
-export async function listCatalog(): Promise<Awaited<ReturnType<typeof queryCatalog>>> {
-  const cached = readCache.get(CATALOG_KEY);
-  if (cached !== undefined) return cached as Awaited<ReturnType<typeof queryCatalog>>;
+export async function listCatalog(
+  searchTerm?: string,
+): Promise<Awaited<ReturnType<typeof queryCatalog>>> {
+  let rows: Awaited<ReturnType<typeof queryCatalog>>;
 
-  const rows = await queryCatalog();
-  readCache.set(CATALOG_KEY, rows);
+  const cached = readCache.get(CATALOG_KEY);
+  if (cached !== undefined) {
+    rows = cached as Awaited<ReturnType<typeof queryCatalog>>;
+  } else {
+    rows = await queryCatalog();
+    readCache.set(CATALOG_KEY, rows);
+  }
+
+  if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    return rows.filter(
+      (r) => r.title?.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q),
+    );
+  }
+
   return rows;
 }
 
@@ -135,6 +164,8 @@ async function queryResourceMeta(id: string) {
       verificationStatus: resources.verificationStatus,
       publisherName: publishers.name,
       publisherWallet: resources.walletAddress,
+      onchainStatus: resources.onchainStatus,
+      onchainTxHash: resources.onchainTxHash,
       createdAt: resources.createdAt,
     })
     .from(resources)

@@ -37,7 +37,6 @@ export async function dynamicPaywall(req: Request, res: Response, next: NextFunc
 
   // Validate the DB price against the on-chain registry before serving a 402.
   // If they disagree we refuse the request rather than charge the wrong amount.
-  // TODO: cover this path with unit tests once a test runner is configured.
   let onChainPrice: string;
   let onChainCreator: string;
   try {

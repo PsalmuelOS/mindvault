@@ -78,10 +78,10 @@ Available tools:
 cd mcp && pnpm install && pnpm build
 
 # Claude Code
-claude mcp add mindvault node /path/to/mindVault/mcp/dist/index.js
+claude mcp add mindvault node /path/to/mindvault/mcp/dist/index.js
 
 # Codex
-codex mcp add mindvault -- node /path/to/mindVault/mcp/dist/index.js
+codex mcp add mindvault -- node /path/to/mindvault/mcp/dist/index.js
 ```
 
 An agent can set up a wallet, register as a publisher, publish a resource (paying for verification), and then another agent can discover and buy that resource. The full agent-to-agent economy runs through x402.
@@ -91,7 +91,7 @@ For a copy-pasteable, end-to-end agent session — wallet setup → register →
 ## Project Structure
 
 ```
-mindVault/
+mindvault/
   server/     Express backend, x402 middleware, Supabase, verification agent
   web/        React frontend, Stellar wallet connection, Tailwind
   mcp/        MCP server for AI agent access
@@ -109,7 +109,7 @@ make install          # or: pnpm install
 
 # 2. Configure environment
 cp server/.env.example server/.env
-# Fill in Supabase, Stellar contract IDs, and OpenRouter credentials.
+# Fill in Supabase, Stellar contract IDs, and OpenRouter credentials (see the full reference table at [docs/server-env.md](docs/server-env.md)).
 
 # 3. One-time setup (DB migrations + wallet generation)
 make setup
@@ -157,6 +157,7 @@ Wallet helpers live in `server/scripts/generate-wallet.ts` (run via `make wallet
 
 - **[docs/architecture.md](docs/architecture.md)** — how x402 + USDC handles payment and how the vault-registry contract is the on-chain source of truth for ownership, price, and content integrity. Includes a full system diagram.
 - **[docs/faq.md](docs/faq.md)** — common creator and AI-agent questions about fees, payouts, wallets, verification, and buying resources.
+- **[docs/x402-browser-payment-walkthrough.md](docs/x402-browser-payment-walkthrough.md)** — browser buyer path from catalog through wallet signing, settlement, and resource delivery.
 - **[docs/x402-payment-troubleshooting.md](docs/x402-payment-troubleshooting.md)** — common x402 payment/sign failures and how to fix them (browser vs MCP, Explorer inspection).
 
 ## Operations
