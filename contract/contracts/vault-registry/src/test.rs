@@ -242,6 +242,35 @@ fn update_metadata_preserves_price_and_creator() {
 }
 
 #[test]
+fn get_owner_returns_creator() {
+    let (env, creator, client) = setup();
+    let id = String::from_str(&env, "owner-test");
+    client.register(&creator, &id, &100i128, &String::from_str(&env, "m"), &empty_tags(&env));
+
+    let owner = client.get_owner(&id);
+    assert_eq!(owner, creator);
+}
+
+#[test]
+fn get_owner_missing_fails() {
+    let (env, _creator, client) = setup();
+    let res = client.try_get_owner(&String::from_str(&env, "nope"));
+    assert_eq!(res, Err(Ok(Error::NotFound)));
+}
+
+#[test]
+fn get_owner_after_transfer() {
+    let (env, creator, client) = setup();
+    let id = String::from_str(&env, "owner-xfer");
+    client.register(&creator, &id, &100i128, &String::from_str(&env, "m"), &empty_tags(&env));
+
+    let new_owner = Address::generate(&env);
+    client.transfer_ownership(&id, &new_owner);
+
+    assert_eq!(client.get_owner(&id), new_owner);
+}
+
+#[test]
 fn set_listed_requires_creator_auth() {
     let (env, creator, client) = setup();
     let id = String::from_str(&env, "r6");
