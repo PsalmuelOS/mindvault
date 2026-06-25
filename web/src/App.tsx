@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { EditPriceModal } from "./components/EditPriceModal.js";
 import { TransferOwnershipModal } from "./components/TransferOwnershipModal.js";
 import { RegisterModal } from "./components/RegisterModal.js";
+import { ResourcePreviewModal } from "./components/ResourcePreviewModal.js";
 import { ExplorerLink } from "./components/ExplorerLink.js";
 import { Toast } from "./components/Toast.js";
 import { CatalogSearch } from "./components/CatalogSearch.js";
@@ -9,6 +10,8 @@ import { ResourceGridSkeleton } from "./components/ResourceCardSkeleton.js";
 import { ErrorBanner } from "./components/ErrorBanner.js";
 import { WalletButton } from "./components/WalletButton.js";
 import { AnalyticsDashboard } from "./components/AnalyticsDashboard.js";
+import { Leaderboard } from "./components/Leaderboard.js";
+import { PublishModal } from "./components/PublishModal.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useAsync } from "./hooks/useAsync.js";
 import { useWalletConnection } from "./hooks/useWalletConnection.js";
@@ -33,9 +36,10 @@ type ActiveModal =
   | { kind: "editPrice"; resource: Resource }
   | { kind: "transferOwnership"; resource: Resource }
   | { kind: "register"; resource: Resource }
+  | { kind: "preview"; resource: Resource }
   | null;
 
-type Tab = "catalog" | "analytics";
+type Tab = "catalog" | "analytics" | "leaderboard";
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? "";
 
@@ -49,10 +53,11 @@ const DEFAULT_FILTERS: CatalogFilters = {
 
 export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; fallbackUrl?: string } | null>(null);
   const [filters, setFilters] = useState<CatalogFilters>(DEFAULT_FILTERS);
   const [overrides, setOverrides] = useState<Record<string, Partial<Resource>>>({});
   const [tab, setTab] = useState<Tab>("catalog");
+  const [showPublish, setShowPublish] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const wallet = useWalletConnection();
 
@@ -62,47 +67,33 @@ export default function App() {
     data: rawResources,
     error: resourcesError,
     retry: retryResources,
-  } = useAsync<Resource[]>((_signal) => (API_KEY ? fetchMyResources(API_KEY) : fetchCatalog()), []);
-
-  // ── Registry status fetch ─────────────────────────────────────────────────
-  const { data: registryData } = useAsync<{ resourceCount: number }>(
-    (_signal) => fetchRegistryStatus(),
-    [],
+  } = useAsync<Resource[]>(
+    (_signal) => (API_KEY ? fetchMyResources(API_KEY) : fetchCatalog(filters)),
+    [filters],
   );
 
-  const resources: Resource[] = useMemo(() => {
+  // ── Registry status fetch ─────────────────────────────────────────────────
+  const {
+    status: registryStatus,
+    data: registryData,
+    error: _registryError,
+    retry: retryRegistry,
+  } = useAsync<{ resourceCount: number }>((_signal) => fetchRegistryStatus(), []);
+
+  const filteredResources: Resource[] = useMemo(() => {
     if (!rawResources) return [];
     return rawResources.map((r) => ({ ...r, ...(overrides[r.id] ?? {}) }));
   }, [rawResources, overrides]);
 
-  const filteredResources = useMemo(() => {
-    return resources.filter((r) => {
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        if (!r.title.toLowerCase().includes(q)) return false;
-      }
-      if (filters.verificationStatus && filters.verificationStatus !== "all") {
-        if (r.verificationStatus !== filters.verificationStatus) return false;
-      }
-      if (filters.resourceType && filters.resourceType !== "all") {
-        if (r.resourceType !== filters.resourceType) return false;
-      }
-      if (filters.minPrice) {
-        if (parseFloat(r.price) < parseFloat(filters.minPrice)) return false;
-      }
-      if (filters.maxPrice) {
-        if (parseFloat(r.price) > parseFloat(filters.maxPrice)) return false;
-      }
-      return true;
-    });
-  }, [resources, filters]);
-
   async function handleCopyUrl(url: string) {
     try {
       await navigator.clipboard.writeText(url);
-      setToast("Resource URL copied to clipboard");
+      setToast({ message: "Resource URL copied to clipboard" });
     } catch {
-      setToast("Failed to copy URL");
+      setToast({
+        message: "Clipboard unavailable — copy the URL below:",
+        fallbackUrl: url,
+      });
     }
   }
 
@@ -137,7 +128,32 @@ export default function App() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">MindVault</h1>
-          {registryCount !== null && (
+          {registryStatus === "error" ? (
+            <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
+                />
+              </svg>
+              <span>Registry status unavailable</span>
+              <button
+                onClick={retryRegistry}
+                className="ml-1 text-xs font-medium underline hover:no-underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : registryCount !== null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Registry:{" "}
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
@@ -145,17 +161,26 @@ export default function App() {
               </span>{" "}
               resource{registryCount !== 1 ? "s" : ""} registered on-chain
             </p>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
+            Catalog
+          </TabButton>
+          <TabButton active={tab === "leaderboard"} onClick={() => setTab("leaderboard")}>
+            Leaderboard
+          </TabButton>
           {API_KEY && (
             <>
-              <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
-                Catalog
-              </TabButton>
               <TabButton active={tab === "analytics"} onClick={() => setTab("analytics")}>
                 My Analytics
               </TabButton>
+              <button
+                onClick={() => setShowPublish(true)}
+                className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                Publish
+              </button>
             </>
           )}
           <WalletButton wallet={wallet} />
@@ -170,17 +195,31 @@ export default function App() {
         </div>
       </div>
 
+      {/* ── Leaderboard tab ────────────────────────────────────────────────── */}
+      {tab === "leaderboard" && (
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Creator Leaderboard
+            </h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Top creators ranked by total USDC earned
+            </p>
+          </div>
+          <Leaderboard />
+        </div>
+      )}
       {/* ── Analytics tab ───────────────────────────────────────────────────── */}
       {tab === "analytics" && API_KEY && <AnalyticsDashboard apiKey={API_KEY} />}
 
       {tab === "catalog" && (
         <>
           {/* ── Pending registration banner ──────────────────────────────────── */}
-          {API_KEY && resources.some(needsRegistration) && (
+          {API_KEY && filteredResources.some(needsRegistration) && (
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                {resources.filter(needsRegistration).length} resource(s) verified but not yet
-                registered on-chain.
+                {filteredResources.filter(needsRegistration).length} resource(s) verified but not
+                yet registered on-chain.
               </p>
             </div>
           )}
@@ -189,7 +228,7 @@ export default function App() {
           {!API_KEY && !isLoading && resourcesStatus === "success" && (
             <CatalogSearch
               filters={filters}
-              total={resources.length}
+              total={filteredResources.length}
               filtered={filteredResources.length}
               onChange={setFilters}
               onReset={() => setFilters(DEFAULT_FILTERS)}
@@ -210,7 +249,12 @@ export default function App() {
           {/* ── Resource grid ────────────────────────────────────────────────── */}
           {resourcesStatus === "success" && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredResources.length === 0 && resources.length > 0 ? (
+              {filteredResources.length === 0 &&
+              (filters.search ||
+                filters.verificationStatus !== "all" ||
+                filters.resourceType !== "all" ||
+                filters.minPrice ||
+                filters.maxPrice) ? (
                 <div className="col-span-full py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                   No resources match your filters.{" "}
                   <button
@@ -220,7 +264,7 @@ export default function App() {
                     Clear filters
                   </button>
                 </div>
-              ) : resources.length === 0 ? (
+              ) : filteredResources.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center gap-4 py-20 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950">
                     <svg
@@ -345,6 +389,12 @@ export default function App() {
                       </span>
                       <div className="flex gap-1">
                         <button
+                          onClick={() => setActiveModal({ kind: "preview", resource: r })}
+                          className="rounded-lg bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-900/75"
+                        >
+                          Preview
+                        </button>
+                        <button
                           onClick={() => handleCopyUrl(r.accessUrl)}
                           className="rounded-lg bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                         >
@@ -387,6 +437,14 @@ export default function App() {
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      {activeModal?.kind === "preview" && (
+        <ResourcePreviewModal
+          resourceId={activeModal.resource.id}
+          onClose={() => setActiveModal(null)}
+          onCopyUrl={handleCopyUrl}
+        />
+      )}
+
       {activeModal?.kind === "editPrice" && (
         <EditPriceModal
           resourceId={activeModal.resource.id}
@@ -417,7 +475,21 @@ export default function App() {
         />
       )}
 
-      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+      {showPublish && API_KEY && (
+        <PublishModal
+          apiKey={API_KEY}
+          onClose={() => setShowPublish(false)}
+          onPublished={() => retryResources()}
+        />
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          fallbackUrl={toast.fallbackUrl}
+          onDismiss={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

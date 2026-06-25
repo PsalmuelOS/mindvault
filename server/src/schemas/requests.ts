@@ -65,3 +65,26 @@ export const transferOwnershipSchema = z
     newCreator: z.string().min(1),
   })
   .strict();
+
+/** Query params for GET /resources (public catalog). */
+export const catalogQuerySchema = z
+  .object({
+    verificationStatus: z.enum(["verified", "pending", "rejected"]).optional(),
+    minPrice: z.string().regex(/^\d+(\.\d+)?$/, "must be a non-negative number").optional(),
+    maxPrice: z.string().regex(/^\d+(\.\d+)?$/, "must be a non-negative number").optional(),
+    search: z.string().optional(),
+    resourceType: z.enum(["file", "link"]).optional(),
+  })
+  .strict()
+  .refine(
+    (data) => {
+      if (data.minPrice !== undefined && data.maxPrice !== undefined) {
+        return parseFloat(data.minPrice) <= parseFloat(data.maxPrice);
+      }
+      return true;
+    },
+    {
+      message: "minPrice cannot be greater than maxPrice",
+      path: ["minPrice"],
+    },
+  );
