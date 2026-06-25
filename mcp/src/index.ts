@@ -582,6 +582,15 @@ const server = new Server({ name: "mindvault", version: "1.0.0" }, { capabilitie
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    { name: "mindvault_setup_wallet", description: "Create a Stellar wallet using the sponsored account protocol.", inputSchema: { type: "object", properties: {}, required: [] } },
+    { name: "mindvault_wallet_info", description: "Check the agent wallet address and USDC balance.", inputSchema: { type: "object", properties: {}, required: [] } },
+    { name: "mindvault_browse", description: "List all available resources in the MindVault catalog.", inputSchema: { type: "object", properties: {}, required: [] } },
+    { name: "mindvault_preview", description: "Get details and price for a specific resource.", inputSchema: { type: "object", properties: { resourceId: { type: "string" } }, required: ["resourceId"] } },
+    { name: "mindvault_register", description: "Register as a publisher using the agent wallet.", inputSchema: { type: "object", properties: { name: { type: "string" }, email: { type: "string" }, walletAddress: { type: "string" } }, required: ["name", "email"] } },
+    { name: "mindvault_publish", description: "Publish a link resource. Agent wallet signs the x402 verification payment on-chain.", inputSchema: { type: "object", properties: { title: { type: "string" }, description: { type: "string" }, price: { type: "string" }, externalUrl: { type: "string" } }, required: ["title", "price", "externalUrl"] } },
+    { name: "mindvault_buy", description: "Pay USDC via x402 and access a resource.", inputSchema: { type: "object", properties: { resourceId: { type: "string" } }, required: ["resourceId"] } },
+    { name: "mindvault_agent_status", description: "Check the verification agent's earnings and activity.", inputSchema: { type: "object", properties: {}, required: [] } },
+    { name: "mindvault_reset_wallet", description: "Clear the in-memory wallet and wipe any persisted wallet files. Use this to rotate or reset the agent wallet.", inputSchema: { type: "object", properties: {}, required: [] } },
     {
       name: "mindvault_setup_wallet",
       description:
@@ -719,6 +728,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     let result: string;
     switch (name) {
+      case "mindvault_setup_wallet": result = await setupWallet(); break;
+      case "mindvault_wallet_info":  result = await walletInfo(); break;
+      case "mindvault_browse":       result = await browse(); break;
+      case "mindvault_preview":      result = await preview(args.resourceId as string); break;
+      case "mindvault_register":     result = await register(args.name as string, args.email as string, args.walletAddress as string | undefined); break;
+      case "mindvault_publish":      result = await publish({ title: args.title as string, description: args.description as string | undefined, price: args.price as string, externalUrl: args.externalUrl as string }); break;
+      case "mindvault_buy":          result = await buy(args.resourceId as string); break;
+      case "mindvault_agent_status": result = await agentStatus(); break;
+      case "mindvault_reset_wallet":  result = resetWallet(); break;
+      default: throw new Error(`Unknown tool: ${name}`);
       case "mindvault_setup_wallet":
         result = await setupWallet();
         break;
