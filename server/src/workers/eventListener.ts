@@ -63,7 +63,6 @@ interface SorobanEvent {
   };
 }
 
-
 function extractResourceId(topic: string[]): string | null {
   if (topic.length < 2) return null;
   const raw = topic[1];
