@@ -16,7 +16,7 @@ Both agents need:
   - `https://stellar-sponsored-agent-account.onrender.com` (sponsored wallet creation)
   - `https://horizon-testnet.stellar.org` (Stellar testnet Horizon)
 
-> **Session isolation:** each MCP session holds its own in-memory wallet and API key. Agent A and Agent B must run in separate sessions. Restarting a session clears the wallet and API key — wallet setup and publisher registration must be repeated.
+> **Session state:** wallet credentials and the publisher API key are persisted to `~/.mindvault/state.json` (mode 0600) and reloaded automatically on restart — you do not need to redo wallet setup or registration after a server restart. Agent A and Agent B still need separate MCP sessions (or separate state files) because each session has independent in-memory state and the file is per-user.
 
 ---
 
@@ -49,10 +49,10 @@ Creates a sponsored Stellar testnet account. The sponsor covers the ~1.5 XLM bas
 ```
 Wallet created.
 Address: GAGENTPUBLISHERAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-Secret key stored in memory (not persisted).
+Wallet persisted to /Users/agent/.mindvault/state.json (mode 0600).
 ```
 
-> The secret key is held in the MCP process only. It is never written to disk and is lost when the session ends.
+The wallet (public key + secret key) is saved to disk and reloaded on MCP server restart — you only need to run `mindvault_setup_wallet` once per agent identity. Run `mindvault_reset` to wipe credentials and start fresh.
 
 ### 2. Fund Agent A's wallet
 
@@ -91,10 +91,10 @@ Registers a publisher record bound to the agent wallet. Returns an API key that 
 ```
 Registered as publisher.
 ID: pub_b2d9e1a3-4f8c-4e2d-9a1b-3c7f2e8d5a9c
-API key stored in memory.
+API key persisted to /Users/agent/.mindvault/state.json (not shown). Run mindvault_reset to revoke.
 ```
 
-Do not restart the session between `mindvault_register` and `mindvault_publish` — the API key is in-memory only.
+The API key is saved to the same state file as the wallet and reloads automatically — `mindvault_publish` works across sessions without re-registering.
 
 ### 5. `mindvault_publish`
 
@@ -246,8 +246,9 @@ Agent B's wallet signs an x402 payment for `0.05 USDC` and the server returns th
 | `USDC Balance: 0` persists | Trustline missing on the account | Re-run `mindvault_setup_wallet` to recreate the account |
 | `mindvault_publish` returns verification error | Publisher wallet under-funded | Check `mindvault_wallet_info`, re-fund, then retry |
 | `mindvault_buy` returns insufficient funds message | Buyer wallet balance below the resource price | Same as above for Agent B |
-| `Not registered. Run mindvault_register first.` | API key was lost (session restarted) | Re-run `mindvault_register` in the same session |
-| `No wallet. Run mindvault_setup_wallet first.` | Wallet state cleared between sessions | Re-run `mindvault_setup_wallet` — the wallet is in-memory only |
+| `Not registered. Run mindvault_register first.` | API key missing — state file deleted or never created | Re-run `mindvault_register`; the key will be persisted for next time |
+| `No wallet. Run mindvault_setup_wallet first.` | Wallet missing — state file deleted or never created | Re-run `mindvault_setup_wallet`; credentials are saved to `~/.mindvault/state.json` |
+| Need to rotate credentials or start fresh | Stale wallet or revoked API key | Run `mindvault_reset`, then `mindvault_setup_wallet` and `mindvault_register` |
 
 See also:
 
